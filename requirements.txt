@@ -1,0 +1,4 @@
+mediapipe==1.2.2
+streamlit>=1.57,<2
+numpy>=1.26,<3
+Pillow>=11,<13
