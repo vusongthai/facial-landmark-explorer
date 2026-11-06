@@ -2,6 +2,7 @@
 import csv
 import io
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -71,23 +72,40 @@ def detect(image, *, sensitive=False):
         running_mode=mp.tasks.vision.RunningMode.IMAGE,
         num_faces=1,
         min_face_detection_confidence=0.35 if sensitive else 0.5,
+        min_face_presence_confidence=0.35 if sensitive else 0.5,
         output_facial_transformation_matrixes=True,
     )
-    frame = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.asarray(image))
     with mp.tasks.vision.FaceLandmarker.create_from_options(options) as landmarker:
-        result = landmarker.detect(frame)
+        for angle in ((0, 45, -45) if sensitive else (0,)):
+            candidate = image.rotate(angle, resample=Image.Resampling.BILINEAR) if angle else image
+            frame = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.asarray(candidate))
+            result = landmarker.detect(frame)
+            if result.face_landmarks:
+                break
     if not result.face_landmarks:
         return [], None
     points = result.face_landmarks[0]
     if len(points) != 478:
         raise ValueError(f"Expected 478 landmarks from the model, received {len(points)}.")
-    landmarks = [
-        dict(index=index, x=p.x, y=p.y, z=p.z,
-             x_px=p.x * image.width, y_px=p.y * image.height)
-        for index, p in enumerate(points)
-    ]
+    width, height = image.size
+    radians = math.radians(angle)
+    cosine, sine = math.cos(radians), math.sin(radians)
+    landmarks = []
+    for index, point in enumerate(points):
+        dx, dy = (point.x - 0.5) * width, (point.y - 0.5) * height
+        x_px = cosine * dx - sine * dy + width / 2
+        y_px = sine * dx + cosine * dy + height / 2
+        landmarks.append(dict(index=index, x=x_px / width, y=y_px / height,
+                              z=point.z, x_px=x_px, y_px=y_px))
     matrices = result.facial_transformation_matrixes
-    return landmarks, estimate_view(matrices[0]) if len(matrices) else None
+    if not len(matrices):
+        return landmarks, None
+    matrix = matrices[0].copy()
+    matrix[0, 2] = cosine * matrix[0, 2] + sine * matrix[1, 2]
+    pose = estimate_view(matrix)
+    if pose is not None and angle:
+        pose["rotation_retry_degrees"] = angle
+    return landmarks, pose
 
 
 def overlay(image, points, radius, label_step):

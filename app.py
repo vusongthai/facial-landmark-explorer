@@ -19,9 +19,9 @@ if upload is None:
     st.stop()
 
 data = upload.getvalue()
-sensitive = st.sidebar.checkbox(
+sensitive = st.checkbox(
     "Increase detection sensitivity",
-    help="Try this if a profile photo goes undetected. It may also accept false detections.",
+    help="Try lower detection thresholds and alternate image rotations for hard-to-detect profiles.",
 )
 key = hashlib.sha256(data).digest(), sensitive
 analysis = st.session_state.get("analysis")
@@ -65,6 +65,8 @@ selected = points[:count]
 if pose is not None:
     direction = f" · facing {pose['direction']}" if pose["direction"] else ""
     st.write(f"**Estimated view:** {pose['view']}{direction} ({pose['yaw_degrees']:+.0f}° yaw)")
+    if "rotation_retry_degrees" in pose:
+        st.info("Detected on an alternate rotation and mapped back to the original photo. Check the overlay before using this result.")
 st.caption("On angled photos, points on the hidden side of the face may be inferred by the model.")
 annotated = overlay(image, selected, radius, label_step)
 preview, original = st.tabs(["Landmarks", "Original photo"])

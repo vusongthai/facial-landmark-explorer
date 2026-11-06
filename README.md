@@ -36,7 +36,7 @@ See the [MediaPipe Face Landmarker Python guide](https://ai.google.dev/edge/medi
 
 ## Export coordinates
 
-Front, three-quarter, and profile photos are mapped individually. The JSON includes an estimated view and yaw in `head_pose` when available. Positive yaw points toward image right. If a profile goes undetected, try **Increase detection sensitivity** or use a slightly smaller head turn. The model can infer hidden points, and accuracy can drop on near-90° profiles.
+Front, three-quarter, and profile photos are mapped individually. The JSON includes an estimated view and yaw in `head_pose` when available. Positive yaw points toward image right. If a profile goes undetected, try **Increase detection sensitivity** below the uploader. It lowers the detection thresholds and can retry at alternate rotations, mapping the result back to the original photo. Check the overlay before using it. The model can infer hidden points, and accuracy can drop on near-90° profiles.
 
 | Field | Meaning |
 | --- | --- |
