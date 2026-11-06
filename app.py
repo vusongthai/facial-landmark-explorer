@@ -19,7 +19,11 @@ if upload is None:
     st.stop()
 
 data = upload.getvalue()
-key = hashlib.sha256(data).digest()
+sensitive = st.sidebar.checkbox(
+    "Increase detection sensitivity",
+    help="Try this if a profile photo goes undetected. It may also accept false detections.",
+)
+key = hashlib.sha256(data).digest(), sensitive
 analysis = st.session_state.get("analysis")
 if analysis is None or analysis[0] != key:
     st.session_state.pop("analysis", None)
@@ -31,7 +35,7 @@ if analysis is None or analysis[0] != key:
 
     try:
         with st.spinner("Finding landmarks. The first run may download the MediaPipe model."):
-            points = detect(image)
+            points, pose = detect(image, sensitive=sensitive)
     except Exception as error:
         st.error(f"Could not run MediaPipe. {error}")
         st.info("See Model setup and Troubleshooting in README.md.")
@@ -39,12 +43,12 @@ if analysis is None or analysis[0] != key:
             st.rerun()
         st.stop()
 
-    analysis = key, image, points
+    analysis = key, image, points, pose
     st.session_state.analysis = analysis
 
-_, image, points = analysis
+_, image, points, pose = analysis
 if not points:
-    st.warning("No face was detected. Try a clearer, front-facing photo.")
+    st.warning("No face was detected. Try increasing detection sensitivity or using a clearer photo with a slightly smaller head turn.")
     st.image(image, caption="Uploaded photo")
     st.stop()
 
@@ -58,6 +62,10 @@ with st.sidebar:
     st.caption("Iris points are orange. Face points are mint green.")
 
 selected = points[:count]
+if pose is not None:
+    direction = f" · facing {pose['direction']}" if pose["direction"] else ""
+    st.write(f"**Estimated view:** {pose['view']}{direction} ({pose['yaw_degrees']:+.0f}° yaw)")
+st.caption("On angled photos, points on the hidden side of the face may be inferred by the model.")
 annotated = overlay(image, selected, radius, label_step)
 preview, original = st.tabs(["Landmarks", "Original photo"])
 preview.image(annotated, caption=f"{count} landmarks · {image.width} × {image.height} pixels")
@@ -71,5 +79,5 @@ png.download_button("Annotated PNG", export_png(annotated), f"{filename}.png",
                     "image/png", on_click="ignore")
 csv.download_button("Landmarks CSV", export_csv(selected), f"{filename}.csv",
                     "text/csv", on_click="ignore")
-json.download_button("Landmarks JSON", export_json(image, selected), f"{filename}.json",
+json.download_button("Landmarks JSON", export_json(image, selected, pose), f"{filename}.json",
                      "application/json", on_click="ignore")

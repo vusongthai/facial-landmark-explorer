@@ -49,25 +49,45 @@ def load_image(data):
         return ImageOps.exif_transpose(source).convert("RGB")
 
 
-def detect(image):
+def estimate_view(matrix):
+    """Classify the direction of the canonical face's forward axis."""
+    x, _, z = matrix[:3, 2]
+    if not np.isfinite([x, z]).all() or np.hypot(x, z) < 1e-6:
+        return None
+    yaw = float(np.degrees(np.arctan2(x, z)))
+    if abs(yaw) < 20:
+        view = "Front"
+    elif abs(yaw) < 65:
+        view = "Three-quarter"
+    else:
+        view = "Profile"
+    direction = None if view == "Front" else ("image right" if yaw > 0 else "image left")
+    return {"view": view, "direction": direction, "yaw_degrees": round(yaw, 1)}
+
+
+def detect(image, *, sensitive=False):
     options = mp.tasks.vision.FaceLandmarkerOptions(
         base_options=mp.tasks.BaseOptions(model_asset_buffer=model_path().read_bytes()),
         running_mode=mp.tasks.vision.RunningMode.IMAGE,
         num_faces=1,
+        min_face_detection_confidence=0.35 if sensitive else 0.5,
+        output_facial_transformation_matrixes=True,
     )
     frame = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.asarray(image))
     with mp.tasks.vision.FaceLandmarker.create_from_options(options) as landmarker:
         result = landmarker.detect(frame)
     if not result.face_landmarks:
-        return []
+        return [], None
     points = result.face_landmarks[0]
     if len(points) != 478:
         raise ValueError(f"Expected 478 landmarks from the model, received {len(points)}.")
-    return [
+    landmarks = [
         dict(index=index, x=p.x, y=p.y, z=p.z,
              x_px=p.x * image.width, y_px=p.y * image.height)
         for index, p in enumerate(points)
     ]
+    matrices = result.facial_transformation_matrixes
+    return landmarks, estimate_view(matrices[0]) if len(matrices) else None
 
 
 def overlay(image, points, radius, label_step):
@@ -99,10 +119,11 @@ def export_csv(points):
     return output.getvalue().encode("utf-8")
 
 
-def export_json(image, points):
+def export_json(image, points, pose=None):
     return json.dumps({
         "image_width": image.width,
         "image_height": image.height,
         "landmark_count": len(points),
+        "head_pose": pose,
         "landmarks": points,
     }, indent=2, allow_nan=False).encode("utf-8")
